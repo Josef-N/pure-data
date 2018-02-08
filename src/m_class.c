@@ -51,6 +51,7 @@ void s_inter_freepdinstance( void);
 void g_canvas_newpdinstance( void);
 void g_canvas_freepdinstance( void);
 void d_ugen_newpdinstance( void);
+void f_fft_newpdinstance( void);
 void d_ugen_freepdinstance( void);
 
 void s_stuff_newpdinstance( void)
@@ -107,6 +108,7 @@ static t_pdinstance *pdinstance_init(t_pdinstance *x)
     g_canvas_newpdinstance();
     d_ugen_newpdinstance();
     s_stuff_newpdinstance();
+    f_fft_newpdinstance();
     return (x);
 }
 

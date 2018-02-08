@@ -797,6 +797,9 @@ EXTERN_STRUCT _instanceugen;
 
 EXTERN_STRUCT _instancestuff;
 #define t_instancestuff struct _instancestuff
+    
+EXTERN_STRUCT _instancefft;
+#define t_instancefft struct _instancefft
 
 #ifndef PDTHREADS
 #define PDTHREADS 1
@@ -814,6 +817,7 @@ struct _pdinstance
     t_instanceugen *pd_ugen;    /* private stuff for d_ugen.c */
     t_instancecanvas *pd_gui;   /* semi-private stuff in g_canvas.h */
     t_instancestuff *pd_stuff;  /* semi-private stuff in s_stuff.h */
+    t_instancefft *pd_fft;      /* private stuff for d_fft_*.c */
     t_pd *pd_newest;            /* most recently created object */
 #ifdef PDINSTANCE
     t_symbol  pd_s_pointer;

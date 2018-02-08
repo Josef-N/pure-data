@@ -30,53 +30,75 @@ for another, more permissive-sounding copyright notice.  -MSP
 # include <stdlib.h> /* BSDs for example */
 #endif
 
-#define FFTFLT double
+#define FFTFLT float
 void cdft(int, int, FFTFLT *, int *, FFTFLT *);
 void rdft(int, int, FFTFLT *, int *, FFTFLT *);
 
 int ilog2(int n);
 
-static PERTHREAD int ooura_maxn;
-static PERTHREAD int *ooura_bitrev;
-static PERTHREAD int ooura_bitrevsize;
-static PERTHREAD FFTFLT *ooura_costab;
+struct _instancefft
+{
+    int f_ooura_maxn;
+    int *f_ooura_bitrev;
+    int f_ooura_bitrevsize;
+    FFTFLT *f_ooura_costab;
+    FFTFLT *f_ooura_buffer;
+};
 
-static int ooura_init( int n)
+#define FFT (pd_this->pd_fft)
+
+static int ooura_init(int n)
 {
     n = (1 << ilog2(n));
     if (n < 64)
         return (0);
-    if (n > ooura_maxn)
+    if (n > FFT->f_ooura_maxn)
     {
-        if (n > ooura_maxn)    /* recheck in case it got set while we waited */
+        if (n > FFT->f_ooura_maxn)    /* recheck in case it got set while we waited */
         {
-            if (ooura_maxn)
+            if (FFT->f_ooura_maxn)
             {
-                t_freebytes(ooura_bitrev, ooura_bitrevsize);
-                t_freebytes(ooura_costab, ooura_maxn * sizeof(FFTFLT) / 2);
+                t_freebytes(FFT->f_ooura_bitrev, FFT->f_ooura_bitrevsize);
+                t_freebytes(FFT->f_ooura_costab, FFT->f_ooura_maxn * sizeof(FFTFLT) / 2);
+                t_freebytes(FFT->f_ooura_buffer, FFT->f_ooura_maxn * sizeof(FFTFLT));
             }
-            ooura_bitrevsize = sizeof(int) * (2 + (1 << (ilog2(n)/2)));
-            ooura_bitrev = (int *)t_getbytes(ooura_bitrevsize);
-            ooura_bitrev[0] = 0;
-            if (!ooura_bitrev)
-            {
-                error("out of memory allocating FFT buffer");
-                ooura_maxn = 0;
-                return (0);
-            }
-            ooura_costab = (FFTFLT *)t_getbytes(n * sizeof(FFTFLT)/2);
-            if (!ooura_costab)
+            FFT->f_ooura_bitrevsize = sizeof(int) * (2 + (1 << (ilog2(n) / 2)));
+            FFT->f_ooura_bitrev = (int *)t_getbytes(FFT->f_ooura_bitrevsize);
+            FFT->f_ooura_bitrev[0] = 0;
+            if (!FFT->f_ooura_bitrev)
             {
                 error("out of memory allocating FFT buffer");
-                t_freebytes(ooura_bitrev, ooura_bitrevsize);
-                ooura_maxn = 0;
+                FFT->f_ooura_maxn = 0;
                 return (0);
             }
-            ooura_maxn = n;
-            ooura_bitrev[0] = 0;
+            FFT->f_ooura_costab = (FFTFLT *)t_getbytes(n * sizeof(FFTFLT) / 2);
+            if (!FFT->f_ooura_costab)
+            {
+                error("out of memory allocating FFT buffer");
+                t_freebytes(FFT->f_ooura_bitrev, FFT->f_ooura_bitrevsize);
+                FFT->f_ooura_maxn = 0;
+                return (0);
+            }
+            FFT->f_ooura_buffer = (FFTFLT *)t_getbytes(n * sizeof(FFTFLT));
+            if (!FFT->f_ooura_buffer)
+            {
+                error("out of memory allocating FFT buffer");
+                t_freebytes(FFT->f_ooura_bitrev, FFT->f_ooura_bitrevsize);
+                t_freebytes(FFT->f_ooura_costab, n * sizeof(FFTFLT) / 2);
+                FFT->f_ooura_maxn = 0;
+                return (0);
+            }
+            FFT->f_ooura_maxn = n;
+            FFT->f_ooura_bitrev[0] = 0;
         }
     }
     return (1);
+}
+
+void f_fft_newpdinstance(void)
+{
+    FFT = getbytes(sizeof(*FFT));
+    ooura_init(2^18);
 }
 
 EXTERN void mayer_fht(t_sample *fz, int n)
@@ -89,16 +111,16 @@ EXTERN void mayer_dofft(t_sample *fz1, t_sample *fz2, int n, int sgn)
     FFTFLT *buf, *fp3;
     int i;
     t_sample *fp1, *fp2;
-    buf = alloca(n * (2 * sizeof(FFTFLT)));
     if (!ooura_init(2*n))
         return;
+    buf = FFT->f_ooura_buffer;
     for (i = 0, fp1 = fz1, fp2 = fz2, fp3 = buf; i < n; i++)
     {
         fp3[0] = *fp1++;
         fp3[1] = *fp2++;
         fp3 += 2;
     }
-    cdft(2*n, sgn, buf, ooura_bitrev, ooura_costab);
+    cdft(2*n, sgn, buf, FFT->f_ooura_bitrev, FFT->f_ooura_costab);
     for (i = 0, fp1 = fz1, fp2 = fz2, fp3 = buf; i < n; i++)
     {
         *fp1++ = fp3[0];
@@ -122,12 +144,12 @@ EXTERN void mayer_realfft(int n, t_sample *fz)
     FFTFLT *buf, *fp3;
     int i, nover2 = n/2;
     t_sample *fp1, *fp2;
-    buf = alloca(n * sizeof(FFTFLT));
     if (!ooura_init(n))
         return;
+    buf = FFT->f_ooura_buffer;
     for (i = 0, fp1 = fz, fp3 = buf; i < n; i++, fp1++, fp3++)
         buf[i] = fz[i];
-    rdft(n, 1, buf, ooura_bitrev, ooura_costab);
+    rdft(n, 1, buf, FFT->f_ooura_bitrev, FFT->f_ooura_costab);
     fz[0] = buf[0];
     fz[nover2] = buf[1];
     for (i = 1, fp1 = fz+1, fp2 = fz+(n-1), fp3 = buf+2; i < nover2;
@@ -140,15 +162,15 @@ EXTERN void mayer_realifft(int n, t_sample *fz)
     FFTFLT *buf, *fp3;
     int i, nover2 = n/2;
     t_sample *fp1, *fp2;
-    buf = alloca(n * sizeof(FFTFLT));
     if (!ooura_init(n))
         return;
+    buf = FFT->f_ooura_buffer;
     buf[0] = fz[0];
     buf[1] = fz[nover2];
     for (i = 1, fp1 = fz+1, fp2 = fz+(n-1), fp3 = buf+2; i < nover2;
         i++, fp1++, fp2--, fp3 += 2)
             fp3[0] = *fp1, fp3[1] = *fp2;
-    rdft(n, -1, buf, ooura_bitrev, ooura_costab);
+    rdft(n, -1, buf, FFT->f_ooura_bitrev, FFT->f_ooura_costab);
     for (i = 0, fp1 = fz, fp3 = buf; i < n; i++, fp1++, fp3++)
         fz[i] = 2*buf[i];
 }
@@ -157,14 +179,15 @@ EXTERN void mayer_realifft(int n, t_sample *fz)
     here and there. */
 void pd_fft(t_float *buf, int npoints, int inverse)
 {
-    FFTFLT *buf2 = (FFTFLT *)alloca(2 * npoints * sizeof(FFTFLT)), *bp2;
+    FFTFLT *buf2, *bp2;
     t_float *fp;
     int i;
     if (!ooura_init(2*npoints))
         return;
+    buf2 = FFT->f_ooura_buffer;
     for (i = 0, bp2 = buf2, fp = buf; i < 2 * npoints; i++, bp2++, fp++)
         *bp2 = *fp;
-    cdft(2*npoints, (inverse ? 1 : -1), buf2, ooura_bitrev, ooura_costab);
+    cdft(2*npoints, (inverse ? 1 : -1), buf2, FFT->f_ooura_bitrev, FFT->f_ooura_costab);
     for (i = 0, bp2 = buf2, fp = buf; i < 2 * npoints; i++, bp2++, fp++)
         *fp = *bp2;
 }
