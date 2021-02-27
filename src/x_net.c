@@ -699,9 +699,15 @@ static void netreceive_listen(t_netreceive *x, t_symbol *s, int argc, t_atom *ar
     #endif
 
     #if 1
+#ifdef _WIN32
         /* ask OS to allow another Pd to reopen this port after we close it */
         if (socket_set_boolopt(sockfd, SOL_SOCKET, SO_REUSEADDR, 1) < 0)
             post("netreceive: setsockopt (SO_REUSEADDR) failed");
+#else
+        /* ask OS to allow another Pd to reopen this port after we close it */
+        if (socket_set_boolopt(sockfd, SOL_SOCKET, SO_REUSEPORT, 1) < 0)
+            post("netreceive: setsockopt (SO_REUSEPORT) failed");
+#endif
     #endif
     #if 0
         intarg = 0;
